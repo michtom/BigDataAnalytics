@@ -1989,7 +1989,7 @@
                     </entry>
                     <entry>
                         <key>Replacement Value</key>
-                        <value>{"symbol": "${symbol}", "price": ${price}, "timestamp": ${now():format("yyyy-MM-dd HH:mm:ss")}}
+                        <value>{"symbol": "${symbol}", "price": ${price}, "timestamp": "${now():format("yyyy-MM-dd HH:mm:ss")}"}
 </value>
                     </entry>
                     <entry>
