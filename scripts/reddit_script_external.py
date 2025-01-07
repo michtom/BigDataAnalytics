@@ -10,9 +10,9 @@ class MyProcessor(StreamCallback):
         # Execute the Python 3.9 script that processes Reddit data
         try:
             # Run internal Python 3.9 script, which collects the data
-            process = subprocess.Popen(['/usr/bin/python3.9', '/home/vagrant/BigDataAnalytics/scripts/reddit_script_internal.py'], stdout=subprocess.PIPE)
+            process = subprocess.Popen(['/usr/bin/python', '/home/vagrant/BigDataAnalytics/scripts/reddit_script_internal.py'], stdout=subprocess.PIPE)
             output, _ = process.communicate()
-
+            
             # Write the output (JSON data) to the flow file
             outputStream.write(bytearray(output))
 

@@ -1,0 +1,37 @@
+# Okienko 1 - dpalanie kafki
+cd /usr/local/kafka/
+bin/kafka-server-start.sh config/server.properties
+
+# Okienko 2 - tworzenie tematu
+cd /usr/local/kafka/
+bin/kafka-topics.sh --create --replication-factor 1 --partitions 1 --topic binance_marketdata --bootstrap-server localhost:9092
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+---------------------------------------------------------------------------------
+
+# nasłuchiwanie przychodzących danych do kafki
+bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic binance_marketdata
+
+# odpalanie sktyptu do trenowania modelu
+spark-submit --master local[*] --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2 spark-kafka.py
+
+---------------------------------------------------------------------------------
+
+# Konfiguracja HBase
+# odpalenie shell'a
+/usr/local/hbase/bin/hbase shell
+
+# stworzenie nowej tabeli dla pogody
+create 'weather', 'weather_info'
+
+# stworzenie nowej tabeli dla reddita
+create 'reddit_sentiment', 'post_info', 'sentiment'
+
+---------------------------------------------------------------------------------
+
+# Konfiguracja Hive
+# odpalenie shell'a
+hive
+
+# stworzenie nowej tabeli
+CREATE TABLE model_results ( currency_diff FLOAT, tem_paris FLOAT, hum_paris FLOAT, wind_paris FLOAT, tem_london FLOAT, hum_london FLOAT, wind_london FLOAT, tem_tokyo FLOAT, hum_tokyo FLOAT, wind_tokyo FLOAT, tem_wawa FLOAT, hum_wawa FLOAT, wind_wawa FLOAT, tem_ny FLOAT, hum_ny FLOAT, wind_ny FLOAT, sentiment FLOAT, y DOUBLE, y_hat DOUBLE, mse DOUBLE, time_stamp DOUBLE ) STORED AS PARQUET;
