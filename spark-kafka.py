@@ -5,6 +5,9 @@ from pyspark import SparkContext, SQLContext
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from sklearn.linear_model import SGDRegressor
+from sklearn.utils.validation import check_is_fitted
+from sklearn.exceptions import NotFittedError
+from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import mean_squared_error
 from datetime import datetime
 import numpy as np
@@ -67,7 +70,8 @@ model_path = "/home/vagrant/BigDataAnalytics/models/sgd_model.pkl"
 if os.path.exists(model_path):
     model = joblib.load(model_path)
 else:
-    model = SGDRegressor(max_iter=1, warm_start=True)
+    # model = SGDRegressor(max_iter=1, warm_start=True)
+    model = MLPRegressor(hidden_layer_sizes=(25, 50, 25))
 
 
 # -------------- FUNCTIONS --------------
@@ -107,7 +111,7 @@ def get_comment_score(comments):
         sentiments.append(analyzer.value.polarity_scores(comment.comm_body)['compound'])
         upvotes.append(comment.comm_score if comment.comm_score > 0 else 0)
         
-    return float(np.mean(np.array(sentiments) * np.array(upvotes) / np.sum(upvotes)))
+    return float(np.mean(np.array(sentiments) * np.array(upvotes) / (np.sum(upvotes) + 1e-12)))
 
 def get_post_score(title):
     global analyzer
@@ -218,12 +222,16 @@ def train_model(batch_df, batch_id):
         X = np.tile(X, (y.shape[0],1))
         
         # Predict on current batch
-        if hasattr(model, "coef_") and model.coef_ is not None:  # Ensure the model is trained before predicting
+        # if hasattr(model, "coef_") and model.coef_ is not None:  # Ensure the model is trained before predicting
+        try:
+            check_is_fitted(model)
             y_pred = model.predict(X)
             mse = mean_squared_error(y, y_pred)
             print(f"Batch {batch_id} - Mean Squared Error: {mse}")
-        else:
+        except NotFittedError as e:
             print(f"Batch {batch_id} - Model not yet trained, skipping metric calculation.")
+            y_pred = None
+            
         
         # Train the model incrementally
         model.partial_fit(X, y)
@@ -234,14 +242,15 @@ def train_model(batch_df, batch_id):
         joblib.dump(model, model_path)
         print(f"Model updated and saved at {model_path}")
 
-        X_hive = X[0].tolist()
-        X_hive.append(y[0])
-        X_hive.append(y_pred[0])
-        X_hive.append("{:.0f}".format(mse))
-        X_hive.append(datetime.timestamp(datetime.now()))
-        X_hive = [str(el) for el in X_hive]
-        query = "INSERT INTO TABLE model_results VALUES ("+', '.join(X_hive)+")"
-        spark.sql(query)
+        if y_pred is not None:
+            X_hive = X[0].tolist()
+            X_hive.append(y[0])
+            X_hive.append(y_pred[0])
+            X_hive.append("{:.0f}".format(mse))
+            X_hive.append(datetime.timestamp(datetime.now()))
+            X_hive = [str(el) for el in X_hive]
+            query = "INSERT INTO TABLE model_results VALUES ("+', '.join(X_hive)+")"
+            spark.sql(query)
         
 # -------------- GLOBAL VARIABLES --------------
 # Global variables

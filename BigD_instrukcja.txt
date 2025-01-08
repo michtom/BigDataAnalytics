@@ -13,6 +13,8 @@ bin/kafka-topics.sh --list --bootstrap-server localhost:9092
 bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic binance_marketdata
 
 # odpalanie sktyptu do trenowania modelu
+# wymagania uruchomienia thrift do hbase w oddzielnej konsoli
+/usr/local/hbase/bin/hbase thrift
 spark-submit --master local[*] --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2 spark-kafka.py
 
 ---------------------------------------------------------------------------------
