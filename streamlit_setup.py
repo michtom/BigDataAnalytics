@@ -3,6 +3,30 @@ from pyhive import hive
 import happybase
 import pandas as pd
 import streamlit as st
+from hdfs import InsecureClient
+
+
+def get_binance_marketdata():
+    namenode = "http://localhost:50070/"
+    hdfs_directory_path = '/user/big_d_analytics/binance_marketdata'
+    client = InsecureClient(namenode)
+    files = client.list(hdfs_directory_path)
+    prices = []
+    for file_name in files:
+        file_path = f"{hdfs_directory_path}/{file_name}"
+        with client.read(file_path) as reader:
+            raw_data = reader.read().decode().strip()
+            if not raw_data:
+                continue
+            try:
+                for line in raw_data.split("\n"):
+                    if line.strip():
+                        json_obj = json.loads(line)
+                        prices.append(json_obj)
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON from {file_name}: {e}")
+                print(f"Problematic Line: {line}")
+    return pd.DataFrame(prices, columns=['symbol', 'price', 'timestamp'])
 
 
 def get_hive_data(query):
@@ -56,3 +80,11 @@ if st.button("Load HBase data"):
         st.dataframe(df_comments)
     except Exception as e:
         st.error(f"Error while downloading HBase data: {e}")
+
+if st.button("Load HDFS data"):
+    try:
+        df_prices = get_binance_marketdata()
+        st.write("### Binance Marketdata")
+        st.dataframe(df_prices)
+    except Exception as e:
+        st.error(f"Error while downloading HDFS data: {e}")
