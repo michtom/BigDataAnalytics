@@ -64,8 +64,6 @@ st.title("BigD Analytics - cryptocurrency, weather and sentiment analysis")
 
 query = "SELECT * FROM model_results"
 
-st.header("Hive database")
-
 # Step 2: Check if data is already in session state
 if "hive_data" not in st.session_state:
     with st.spinner("Fetching data from Hive..."):
@@ -79,11 +77,6 @@ if "hive_data" not in st.session_state:
 model_results = st.session_state.hive_data
 model_results.columns = model_results.columns.str.replace('model_results.', '')
 
-st.write("### Hive Data")
-st.dataframe(model_results)
-
-st.header("HBase database")
-
 if "reddit_comments" not in st.session_state or "reddit_posts" not in st.session_state:
     with st.spinner("Fetching data from HBase..."):
         try:
@@ -92,13 +85,8 @@ if "reddit_comments" not in st.session_state or "reddit_posts" not in st.session
             st.session_state.reddit_posts, st.session_state.reddit_comments = None, None
             st.error(f"Error while downloading HBase data: {e}")
 df_posts, df_comments = st.session_state.reddit_posts, st.session_state.reddit_comments
-st.write("### HBase Data")
-st.dataframe(df_posts)
-st.dataframe(df_comments)
 
 # ---------------------------- Change hive dataframe -----------------------
-
-
 # For printing on plots
 model_results['date'] = pd.to_datetime(model_results['time_stamp'], unit='s')
 
@@ -109,7 +97,6 @@ model_results = model_results.sort_values('time_stamp').reset_index(drop=True)
 st.markdown('## Select time period')
 
 # Slider to filter data by date
-# TODO: fix labels or sth
 start_date = datetime.fromtimestamp(model_results['time_stamp'].min())
 end_date = datetime.fromtimestamp(model_results['time_stamp'].max())
 
@@ -122,6 +109,42 @@ start, end = st.slider(
     format="YYYY/MM/DD - hh:mm",
     step=timedelta(minutes=1)
 )
+
+# ---------------------------- Binance market data -----------------------
+
+st.header("Binance Market Data")
+
+
+def plot_marketdata(df):
+    figure = go.Figure()
+    figure.add_trace(go.Scatter(x=df['date'], y=df['price'], mode='lines', name='Price'))
+    figure.update_layout(
+        title='Binance Market Data',
+        xaxis_title='Time',
+        yaxis_title='Price (USD)',
+        xaxis_tickangle=-90,
+        template="plotly_dark",
+        xaxis=dict(
+            tickformat='%Y/%m/%d %H:%M',  # Format the date as needed
+        ),
+    )
+    st.plotly_chart(figure)
+
+
+if "hdfs_data" not in st.session_state:
+    with st.spinner("Fetching data from Hive..."):
+        try:
+            st.session_state.hdfs_data = get_binance_marketdata()
+        except Exception as e:
+            st.session_state.hdfs_data = None
+            st.error(f"Error while downloading HDFS data: {e}")
+
+df_prices = st.session_state.hdfs_data
+df_prices = df_prices.sort_values('timestamp')
+df_prices['date'] = pd.to_datetime(df_prices['timestamp'])
+df_prices_filtered = df_prices[(df_prices['date'] >= start) & (df_prices['date'] <= end)]
+
+plot_marketdata(df_prices_filtered)
 
 # ---------------------------- Binance values and predictions -----------------------
 
@@ -167,7 +190,7 @@ def plot_binance_predictions(df):
 def plot_mse(df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df['time_stamp'],
+        x=df['date'],
         y=df['mse'],
         mode='lines+markers',
         name='Model MSE',
@@ -177,12 +200,12 @@ def plot_mse(df):
 
     fig.update_layout(
         title='Model MSE Over Time',
-        xaxis_title='Timestamp',
+        xaxis_title='Date',
         yaxis_title='Model MSE',
+        xaxis_tickangle=-90,
         template='plotly_dark',  # Optional: choose a template (light or dark)
         xaxis=dict(
             tickformat='%Y/%m/%d %H:%M',  # Format the date as needed
-            tickangle=-45
         ),
         yaxis=dict(
             zeroline=True,
@@ -197,35 +220,6 @@ plot_binance_predictions(filtered_results)
 
 plot_mse(filtered_results)
 
-# ---------------------------- Binance market data -----------------------
-
-st.header("Binance Market Data")
-
-
-def plot_marketdata(df):
-    figure = go.Figure()
-    figure.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines+markers', name='Price'))
-    figure.update_layout(
-        title='Binance Market Data',
-        xaxis_title='Time',
-        yaxis_title='Price (USD)',
-        xaxis_rangeslider_visible=True,
-        template="plotly_dark"
-    )
-    st.plotly_chart(figure)
-
-
-if "hdfs_data" not in st.session_state:
-    with st.spinner("Fetching data from Hive..."):
-        try:
-            st.session_state.hdfs_data = get_binance_marketdata()
-        except Exception as e:
-            st.session_state.hdfs_data = None
-            st.error(f"Error while downloading HDFS data: {e}")
-
-df_prices = st.session_state.hdfs_data
-plot_marketdata(df_prices)
-
 # ---------------------------- Weather data -----------------------
 st.markdown('## Weather information')
 
@@ -236,11 +230,11 @@ def plot_weather_data(df):
     with col1:
         show_paris = st.checkbox('Paris', value=True)
     with col2:
-        show_lon = st.checkbox('London', value=True)
+        show_lon = st.checkbox('London', value=False)
     with col3:
-        show_tokyo = st.checkbox('Tokyo', value=True)
+        show_tokyo = st.checkbox('Tokyo', value=False)
     with col4:
-        show_wawa = st.checkbox('Warsaw', value=True)
+        show_wawa = st.checkbox('Warsaw', value=False)
     with col5:
         show_ny = st.checkbox('New York', value=True)
 
@@ -256,22 +250,27 @@ def plot_weather_data(df):
             x=df['date'],
             y=df['tem_paris'],
             mode='lines',
-            name='Paris Temperature',
-            line=dict(color='red')
+            name='Paris',
+            legendgroup='Paris',
+            line=dict(color='red'),
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['hum_paris'],
             mode='lines',
-            name='Paris Humidity',
-            line=dict(color='red', dash='dash')
+            name='Paris',
+            legendgroup='Paris',
+            line=dict(color='red'),
+            showlegend=False
         ), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['wind_paris'],
             mode='lines',
-            name='Paris Wind Speed',
-            line=dict(color='red', dash='dot')
+            name='Paris',
+            legendgroup='Paris',
+            line=dict(color='red'),
+            showlegend=False
         ), row=3, col=1)
 
     if show_lon:
@@ -279,22 +278,27 @@ def plot_weather_data(df):
             x=df['date'],
             y=df['tem_london'],
             mode='lines',
-            name='London Temperature',
-            line=dict(color='green')
+            name='London',
+            legendgroup='London',
+            line=dict(color='green'),
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['hum_london'],
             mode='lines',
-            name='London Humidity',
-            line=dict(color='green', dash='dash')
+            name='London',
+            legendgroup='London',
+            line=dict(color='green'),
+            showlegend=False
         ), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['wind_london'],
             mode='lines',
-            name='London Wind Speed',
-            line=dict(color='green', dash='dot')
+            name='London',
+            legendgroup='London',
+            line=dict(color='green'),
+            showlegend=False
         ), row=3, col=1)
 
     if show_tokyo:
@@ -302,22 +306,26 @@ def plot_weather_data(df):
             x=df['date'],
             y=df['tem_tokyo'],
             mode='lines',
-            name='Tokyo Temperature',
-            line=dict(color='blue')
+            name='Tokyo',
+            legendgroup='Tokyo',
+            line=dict(color='blue'),
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['hum_tokyo'],
             mode='lines',
-            name='Tokyo Humidity',
-            line=dict(color='blue', dash='dash')
+            name='Tokyo',
+            legendgroup='Tokyo',
+            line=dict(color='blue'),
+            showlegend=False
         ), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['wind_tokyo'],
             mode='lines',
-            name='Tokyo Wind Speed',
-            line=dict(color='blue', dash='dot')
+            name='Tokyo',
+            legendgroup='Tokyo',
+            line=dict(color='blue'),
         ), row=3, col=1)
 
     if show_wawa:
@@ -325,22 +333,27 @@ def plot_weather_data(df):
             x=df['date'],
             y=df['tem_wawa'],
             mode='lines',
-            name='Warsaw Temperature',
-            line=dict(color='gold')
+            name='Warsaw',
+            legendgroup='Warsaw',
+            line=dict(color='gold'),
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['hum_wawa'],
             mode='lines',
-            name='Warsaw Humidity',
-            line=dict(color='gold', dash='dash')
+            name='Warsaw',
+            legendgroup='Warsaw',
+            line=dict(color='gold'),
+            showlegend=False
         ), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['wind_wawa'],
             mode='lines',
-            name='Warsaw Wind Speed',
-            line=dict(color='gold', dash='dot')
+            name='Warsaw',
+            legendgroup='Warsaw',
+            line=dict(color='gold'),
+            showlegend=False
         ), row=3, col=1)
 
     if show_ny:
@@ -348,22 +361,27 @@ def plot_weather_data(df):
             x=df['date'],
             y=df['tem_ny'],
             mode='lines',
-            name='New York Temperature',
-            line=dict(color='black')
+            name='New York',
+            legendgroup='New York',
+            line=dict(color='white'),
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['hum_ny'],
             mode='lines',
-            name='New York Humidity',
-            line=dict(color='black', dash='dash')
+            name='New York',
+            legendgroup='New York',
+            line=dict(color='white'),
+            showlegend=False
         ), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df['date'],
             y=df['wind_ny'],
             mode='lines',
-            name='New York Wind Speed',
-            line=dict(color='black', dash='dot')
+            name='New York',
+            legendgroup='New York',
+            line=dict(color='white'),
+            showlegend=False
         ), row=3, col=1)
 
     fig.update_layout(
@@ -402,7 +420,7 @@ def plot_sentiment(df):
         y=df['sentiment'],
         mode='lines',
         name='Sentiment',
-        line=dict(color='black', width=2)
+        line=dict(color='white', width=2)
     ))
 
     fig.update_layout(
@@ -420,3 +438,16 @@ def plot_sentiment(df):
 
 
 plot_sentiment(filtered_results)
+
+
+# ---------------------------- Dataframes -----------------------
+st.header("Hive database")
+
+st.write("### Model results")
+st.dataframe(model_results)
+
+st.header("HBase database")
+st.write("### Reddit posts")
+st.dataframe(df_posts)
+st.write("### Reddit comments")
+st.dataframe(df_comments)
