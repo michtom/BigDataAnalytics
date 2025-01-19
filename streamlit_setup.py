@@ -3,10 +3,11 @@ from pyhive import hive
 import happybase
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from datetime import datetime, timedelta
+from datetime import timedelta
 from hdfs import InsecureClient
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+from datetime import datetime
 
 
 def get_binance_marketdata():
@@ -59,34 +60,43 @@ def get_hbase_reddit_data():
     return df_posts, df_comments
 
 
-st.title("BigD Analytics - first test version of dashboard")
+st.title("BigD Analytics - cryptocurrency, weather and sentiment analysis")
 
 query = "SELECT * FROM model_results"
 
 st.header("Hive database")
 
 # Step 2: Check if data is already in session state
-if "data" not in st.session_state:
+if "hive_data" not in st.session_state:
     with st.spinner("Fetching data from Hive..."):
-        st.session_state.data = get_hive_data(query)
+        try:
+            st.session_state.hive_data = get_hive_data(query)
+        except Exception as e:
+            st.error(f"Error while downloading Hive data: {e}")
+            st.session_state.hive_data = None
 
 # Step 3: Use the DataFrame for further operations
-model_results = st.session_state.data
+model_results = st.session_state.hive_data
 model_results.columns = model_results.columns.str.replace('model_results.', '')
 
 st.write("### Hive Data")
 st.dataframe(model_results)
 
-#st.header("HBase database")
+st.header("HBase database")
 
-#df_posts, df_comments = get_hbase_reddit_data()
-#st.write("### HBase Data")
-#st.dataframe(df_posts)
-#st.dataframe(df_comments)
-
+if "reddit_comments" not in st.session_state or "reddit_posts" not in st.session_state:
+    with st.spinner("Fetching data from HBase..."):
+        try:
+            st.session_state.reddit_posts, st.session_state.reddit_comments = get_hbase_reddit_data()
+        except Exception as e:
+            st.session_state.reddit_posts, st.session_state.reddit_comments = None, None
+            st.error(f"Error while downloading HBase data: {e}")
+df_posts, df_comments = st.session_state.reddit_posts, st.session_state.reddit_comments
+st.write("### HBase Data")
+st.dataframe(df_posts)
+st.dataframe(df_comments)
 
 # ---------------------------- Change hive dataframe -----------------------
-
 
 
 # For printing on plots
@@ -94,7 +104,6 @@ model_results['date'] = pd.to_datetime(model_results['time_stamp'], unit='s')
 
 # Sort (not necessary, but easier to look at)
 model_results = model_results.sort_values('time_stamp').reset_index(drop=True)
-
 
 # ---------------------------- Time slider for everything -----------------------
 st.markdown('## Select time period')
@@ -118,111 +127,265 @@ start, end = st.slider(
 
 st.markdown('## Model predictions')
 
-# Filter data based on slider
-filtered_results = model_results[(model_results['time_stamp'] >= datetime.timestamp(start)) & (model_results['time_stamp'] <= datetime.timestamp(end))]
+filtered_results = model_results[(model_results['time_stamp'] >= datetime.timestamp(start)) & (
+            model_results['time_stamp'] <= datetime.timestamp(end))]
 
-# Plot the filtered data
-fig, ax = plt.subplots()
-ax.plot(filtered_results['date'], filtered_results['y'], label='True', color='blue', linewidth=0.5)
-ax.plot(filtered_results['date'], filtered_results['y_hat'], label='Prediction', color='red', ls='--')
-ax.set_xlabel('Date')
-ax.set_ylabel('Bitcoin price change [USD]')
-ax.set_title('Binance Prediction')
-plt.xticks(rotation=90)
-ax.legend()
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
 
-# Display the plot
-st.pyplot(fig)
+def plot_binance_predictions(df):
+    fig = go.Figure()
 
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['y'],
+        mode='lines',
+        name='True',
+        line=dict(color='blue', width=2)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['y_hat'],
+        mode='lines',
+        name='Prediction',
+        line=dict(color='red', dash='dash', width=2)
+    ))
+
+    fig.update_layout(
+        title='Binance Prediction',
+        xaxis_title='Date',
+        yaxis_title='Bitcoin price change [USD]',
+        xaxis_tickangle=-90,
+        template='plotly_dark',  # Optional: choose a template (light or dark)
+        xaxis=dict(
+            tickformat='%Y/%m/%d %H:%M'  # Format the date as needed
+        ),
+        legend=dict(x=0, y=1, traceorder='normal', orientation='h')
+    )
+    st.plotly_chart(fig)
+
+
+plot_binance_predictions(filtered_results)
+
+# ---------------------------- Binance market data -----------------------
+
+st.header("Binance Market Data")
+
+
+def plot_marketdata(df):
+    figure = go.Figure()
+    figure.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines+markers', name='Price'))
+    figure.update_layout(
+        title='Binance Market Data',
+        xaxis_title='Time',
+        yaxis_title='Price (USD)',
+        xaxis_rangeslider_visible=True,
+        template="plotly_dark"
+    )
+    st.plotly_chart(figure)
+
+
+if "hdfs_data" not in st.session_state:
+    with st.spinner("Fetching data from Hive..."):
+        try:
+            st.session_state.hdfs_data = get_binance_marketdata()
+        except Exception as e:
+            st.session_state.hdfs_data = None
+            st.error(f"Error while downloading HDFS data: {e}")
+
+df_prices = st.session_state.hdfs_data
+plot_marketdata(df_prices)
 
 # ---------------------------- Weather data -----------------------
 st.markdown('## Weather information')
 
-# Select towns
-col1, col2, col3, col4, col5 = st.columns(5)
 
-# Place checkboxes in the columns
-with col1:
-    show_paris = st.checkbox('Paris', value=True)
-with col2:
-    show_lon = st.checkbox('London', value=True)
-with col3:
-    show_tokyo = st.checkbox('Tokyo', value=True)
-with col4:
-    show_wawa = st.checkbox('Warsaw', value=True)
-with col5:
-    show_ny = st.checkbox('New York', value=True)
+def plot_weather_data(df):
+    col1, col2, col3, col4, col5 = st.columns(5)
 
-fig, ax = plt.subplots(ncols=1, nrows=3, figsize=(10, 15))
+    with col1:
+        show_paris = st.checkbox('Paris', value=True)
+    with col2:
+        show_lon = st.checkbox('London', value=True)
+    with col3:
+        show_tokyo = st.checkbox('Tokyo', value=True)
+    with col4:
+        show_wawa = st.checkbox('Warsaw', value=True)
+    with col5:
+        show_ny = st.checkbox('New York', value=True)
 
-# Plot data
-if show_paris:
-    ax[0].plot(filtered_results['date'], filtered_results['tem_paris'], color='red', linewidth=1, label='Paris')
-    ax[1].plot(filtered_results['date'], filtered_results['hum_paris'], color='red', linewidth=1, label='Paris')
-    ax[2].plot(filtered_results['date'], filtered_results['wind_paris'], color='red', linewidth=1, label='Paris')
-if show_lon:
-    ax[0].plot(filtered_results['date'], filtered_results['tem_london'], color='green', linewidth=1, label='London')
-    ax[1].plot(filtered_results['date'], filtered_results['hum_london'], color='green', linewidth=1, label='London')
-    ax[2].plot(filtered_results['date'], filtered_results['wind_london'], color='green', linewidth=1, label='London')
-if show_tokyo:
-    ax[0].plot(filtered_results['date'], filtered_results['tem_tokyo'], color='blue', linewidth=1, label='Tokyo')
-    ax[1].plot(filtered_results['date'], filtered_results['hum_tokyo'], color='blue', linewidth=1, label='Tokyo')
-    ax[2].plot(filtered_results['date'], filtered_results['wind_tokyo'], color='blue', linewidth=1, label='Tokyo')
-if show_wawa:
-    ax[0].plot(filtered_results['date'], filtered_results['tem_wawa'], color='gold', linewidth=1, label='Warsaw')
-    ax[1].plot(filtered_results['date'], filtered_results['hum_wawa'], color='gold', linewidth=1, label='Warsaw')
-    ax[2].plot(filtered_results['date'], filtered_results['wind_wawa'], color='gold', linewidth=1, label='Warsaw')
-if show_ny:
-    ax[0].plot(filtered_results['date'], filtered_results['tem_ny'], color='black', linewidth=1, label='New York')
-    ax[1].plot(filtered_results['date'], filtered_results['hum_ny'], color='black', linewidth=1, label='New York')
-    ax[2].plot(filtered_results['date'], filtered_results['wind_ny'], color='black', linewidth=1, label='New York')
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+        subplot_titles=('Temperature', 'Humidity', 'Wind Speed'),
+        row_heights=[0.3, 0.3, 0.3]
+    )
+    if show_paris:
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['tem_paris'],
+            mode='lines',
+            name='Paris Temperature',
+            line=dict(color='red')
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['hum_paris'],
+            mode='lines',
+            name='Paris Humidity',
+            line=dict(color='red', dash='dash')
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['wind_paris'],
+            mode='lines',
+            name='Paris Wind Speed',
+            line=dict(color='red', dash='dot')
+        ), row=3, col=1)
 
-# Add legend (top)
-handles, labels = ax[0].get_legend_handles_labels()
-fig.legend(handles, labels, loc='upper center', ncol=5, labelspacing=0.1, bbox_to_anchor=(0.5, 0.95))
+    if show_lon:
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['tem_london'],
+            mode='lines',
+            name='London Temperature',
+            line=dict(color='green')
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['hum_london'],
+            mode='lines',
+            name='London Humidity',
+            line=dict(color='green', dash='dash')
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['wind_london'],
+            mode='lines',
+            name='London Wind Speed',
+            line=dict(color='green', dash='dot')
+        ), row=3, col=1)
 
-# Add titles, labels etc.
-ax[0].set_title('Temperature')
-ax[0].set_ylabel('Temperature [C]')
+    if show_tokyo:
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['tem_tokyo'],
+            mode='lines',
+            name='Tokyo Temperature',
+            line=dict(color='blue')
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['hum_tokyo'],
+            mode='lines',
+            name='Tokyo Humidity',
+            line=dict(color='blue', dash='dash')
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['wind_tokyo'],
+            mode='lines',
+            name='Tokyo Wind Speed',
+            line=dict(color='blue', dash='dot')
+        ), row=3, col=1)
 
-ax[1].set_title('Humidity')
-ax[1].set_ylabel('Humidity [%]')
+    if show_wawa:
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['tem_wawa'],
+            mode='lines',
+            name='Warsaw Temperature',
+            line=dict(color='gold')
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['hum_wawa'],
+            mode='lines',
+            name='Warsaw Humidity',
+            line=dict(color='gold', dash='dash')
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['wind_wawa'],
+            mode='lines',
+            name='Warsaw Wind Speed',
+            line=dict(color='gold', dash='dot')
+        ), row=3, col=1)
 
-ax[2].set_title('Wind speed')
-ax[2].set_ylabel('Wind speed [m/s]')
+    if show_ny:
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['tem_ny'],
+            mode='lines',
+            name='New York Temperature',
+            line=dict(color='black')
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['hum_ny'],
+            mode='lines',
+            name='New York Humidity',
+            line=dict(color='black', dash='dash')
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['date'],
+            y=df['wind_ny'],
+            mode='lines',
+            name='New York Wind Speed',
+            line=dict(color='black', dash='dot')
+        ), row=3, col=1)
 
-ax[0].tick_params(rotation=90)
-ax[1].tick_params(rotation=90)
-ax[2].tick_params(rotation=90)
+    fig.update_layout(
+        title='Weather Data Comparison',
+        xaxis_title='Date',
+        yaxis_title='Value',
+        template='plotly_dark',
+        xaxis_tickangle=-90,
+        xaxis=dict(
+            tickformat='%Y/%m/%d %H:%M'
+        ),
+        legend=dict(
+            x=0.5,
+            y=1.1,
+            traceorder='normal',
+            orientation='h',
+            xanchor='center',
+            yanchor='bottom'
+        ),
+        height=900
+    )
 
-ax[0].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
-ax[1].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
-ax[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
+    st.plotly_chart(fig)
 
-plt.subplots_adjust(hspace=0.65)
 
-st.pyplot(fig)
+plot_weather_data(filtered_results)
 
 # ---------------------------- Sentiment data -----------------------
 st.markdown('## Sentiment')
 
-# Plot the filtered data
-fig, ax = plt.subplots()
-ax.plot(filtered_results['date'], filtered_results['sentiment'], color='black', linewidth=1)
-ax.set_xlabel('Date')
-ax.set_ylabel('Sentiment value')
-plt.xticks(rotation=90)
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
 
-# Display the plot
-st.pyplot(fig)
-st.header("HDFS data")
+def plot_sentiment(df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['sentiment'],
+        mode='lines',
+        name='Sentiment',
+        line=dict(color='black', width=2)
+    ))
 
-if st.button("Load HDFS data"):
-    try:
-        df_prices = get_binance_marketdata()
-        st.write("### Binance Marketdata")
-        st.dataframe(df_prices)
-    except Exception as e:
-        st.error(f"Error while downloading HDFS data: {e}")
+    fig.update_layout(
+        title='Sentiment Analysis Over Time',
+        xaxis_title='Date',
+        yaxis_title='Sentiment value',
+        xaxis_tickangle=-90,
+        template='plotly_dark',
+        xaxis=dict(
+            tickformat='%Y/%m/%d %H:%M'
+        ),
+        legend=dict(x=0, y=1, traceorder='normal', orientation='h')
+    )
+    st.plotly_chart(fig)
+
+
+plot_sentiment(filtered_results)
