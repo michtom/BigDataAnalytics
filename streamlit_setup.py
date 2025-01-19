@@ -164,7 +164,38 @@ def plot_binance_predictions(df):
     st.plotly_chart(fig)
 
 
+def plot_mse(df):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df['time_stamp'],
+        y=df['mse'],
+        mode='lines+markers',
+        name='Model MSE',
+        line=dict(color='blue'),
+        marker=dict(size=6, color='blue', opacity=0.6)
+    ))
+
+    fig.update_layout(
+        title='Model MSE Over Time',
+        xaxis_title='Timestamp',
+        yaxis_title='Model MSE',
+        template='plotly_dark',  # Optional: choose a template (light or dark)
+        xaxis=dict(
+            tickformat='%Y/%m/%d %H:%M',  # Format the date as needed
+            tickangle=-45
+        ),
+        yaxis=dict(
+            zeroline=True,
+            showgrid=True
+        ),
+        height=600
+    )
+    st.plotly_chart(fig)
+
+
 plot_binance_predictions(filtered_results)
+
+plot_mse(filtered_results)
 
 # ---------------------------- Binance market data -----------------------
 
