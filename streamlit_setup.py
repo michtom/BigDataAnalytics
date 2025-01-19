@@ -192,7 +192,7 @@ def plot_mse(df):
     fig.add_trace(go.Scatter(
         x=df['date'],
         y=df['mse'],
-        mode='lines+markers',
+        mode='lines',
         name='Model MSE',
         line=dict(color='blue'),
         marker=dict(size=6, color='blue', opacity=0.6)
