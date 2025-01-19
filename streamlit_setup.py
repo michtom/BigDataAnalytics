@@ -41,7 +41,15 @@ query = "SELECT * FROM model_results"
 
 st.header("Hive database")
 
-model_results = get_hive_data(query)
+# Step 2: Check if data is already in session state
+if "data" not in st.session_state:
+    with st.spinner("Fetching data from Hive..."):
+        st.session_state.data = get_hive_data(query)
+
+# Step 3: Use the DataFrame for further operations
+model_results = st.session_state.data
+model_results.columns = model_results.columns.str.replace('model_results.', '')
+
 st.write("### Hive Data")
 st.dataframe(model_results)
 
@@ -55,9 +63,11 @@ st.dataframe(model_results)
 
 # ---------------------------- Change hive dataframe -----------------------
 
+
+
 # For printing on plots
-model_results['date'] = pd.to_datetime(model_results['model_results.time_stamp'], unit='s')
-model_results.columns = model_results.columns.str.replace('model_results.', '')
+model_results['date'] = pd.to_datetime(model_results['time_stamp'], unit='s')
+
 # Sort (not necessary, but easier to look at)
 model_results = model_results.sort_values('time_stamp').reset_index(drop=True)
 
