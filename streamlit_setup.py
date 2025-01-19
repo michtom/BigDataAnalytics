@@ -81,6 +81,8 @@ if st.button("Load HBase data"):
     except Exception as e:
         st.error(f"Error while downloading HBase data: {e}")
 
+st.header("HDFS data")
+
 if st.button("Load HDFS data"):
     try:
         df_prices = get_binance_marketdata()
