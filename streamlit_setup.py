@@ -41,30 +41,23 @@ query = "SELECT * FROM model_results"
 
 st.header("Hive database")
 
-if st.button("Load Hive data"):
-    try:
-        model_results = get_hive_data(query)
-        st.write("### Hive Data")
-        st.dataframe(model_results)
-    except Exception as e:
-        st.error(f"Error while downloading Hive data: {e}")
+model_results = get_hive_data(query)
+st.write("### Hive Data")
+st.dataframe(model_results)
 
-st.header("HBase database")
+#st.header("HBase database")
 
-if st.button("Load HBase data"):
-    try:
-        df_posts, df_comments = get_hbase_reddit_data()
-        st.write("### HBase Data")
-        st.dataframe(df_posts)
-        st.dataframe(df_comments)
-    except Exception as e:
-        st.error(f"Error while downloading HBase data: {e}")
+#df_posts, df_comments = get_hbase_reddit_data()
+#st.write("### HBase Data")
+#st.dataframe(df_posts)
+#st.dataframe(df_comments)
 
 
 # ---------------------------- Change hive dataframe -----------------------
 
 # For printing on plots
-model_results['date'] = pd.to_datetime(model_results['time_stamp'], unit='s')
+model_results['date'] = pd.to_datetime(model_results['model_results.time_stamp'], unit='s')
+model_results.columns = model_results.columns.str.replace('model_results.', '')
 # Sort (not necessary, but easier to look at)
 model_results = model_results.sort_values('time_stamp').reset_index(drop=True)
 
@@ -173,7 +166,7 @@ ax[0].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
 ax[1].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
 ax[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y/%m/%d %H:%M'))
 
-plt.subplots_adjust(hspace=0.55)
+plt.subplots_adjust(hspace=0.65)
 
 st.pyplot(fig)
 
