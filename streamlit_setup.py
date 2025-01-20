@@ -326,6 +326,7 @@ def plot_weather_data(df):
             name='Tokyo',
             legendgroup='Tokyo',
             line=dict(color='blue'),
+            showlegend=False
         ), row=3, col=1)
 
     if show_wawa:
