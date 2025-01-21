@@ -60,6 +60,11 @@ def get_hbase_reddit_data():
     return df_posts, df_comments
 
 
+if st.button("Refresh"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
 st.title("BigD Analytics - cryptocurrency, weather and sentiment analysis")
 
 query = "SELECT * FROM model_results"
